@@ -1,508 +1,1021 @@
+import { useEffect, useMemo, useState } from "react";
 
-import { useState } from "react";
+const STORAGE_KEY = "echoris-memories";
+const THEME_KEY = "echoris-theme";
 
-const initialMemories = [
+const starterMemories = [
   {
-    id: 1,
-    title: "College fest",
-    description:
-      "A fun day spent with friends at the college fest. One of those days I wish I could relive.",
-    date: "October 29, 2026",
-    people: ["Ananya"],
-    place: "College campus",
-    emotion: "Nostalgia",
-    color: "from-violet-500/20 to-indigo-500/10",
+    id: "memory-1",
+    title: "A little afternoon worth keeping",
+    content:
+      "The sunlight came through the window just right. We talked about everything and nothing, and somehow the afternoon became one of my favorite memories.",
+    date: "2026-10-24",
+    people: ["My friends"],
+    place: "The little café",
+    tags: ["Friendship", "Little moments"],
+    favorite: true,
+    color: "lavender",
   },
   {
-    id: 2,
-    title: "A quiet evening",
-    description:
-      "Watching the sunset and talking about absolutely everything.",
-    date: "October 18, 2026",
-    people: ["Rahul", "Ananya"],
-    place: "Our favorite café",
-    emotion: "Peace",
-    color: "from-emerald-500/20 to-teal-500/10",
+    id: "memory-2",
+    title: "The day everything felt possible",
+    content:
+      "A new beginning. A little nervous, a little excited, but mostly grateful for the things that are still waiting to happen.",
+    date: "2026-10-18",
+    people: [],
+    place: "Campus",
+    tags: ["New beginnings"],
+    favorite: false,
+    color: "cream",
   },
   {
-    id: 3,
-    title: "The first project",
-    description:
-      "The excitement of building something together for the very first time.",
-    date: "October 12, 2026",
-    people: ["Rahul"],
-    place: "College lab",
-    emotion: "Pride",
-    color: "from-amber-500/20 to-orange-500/10",
+    id: "memory-3",
+    title: "A conversation under the stars",
+    content:
+      "We stayed outside longer than we planned. The night was quiet, the sky was beautiful, and I wished I could save that exact feeling.",
+    date: "2026-10-12",
+    people: ["Someone special"],
+    place: "The terrace",
+    tags: ["Night", "Peace"],
+    favorite: true,
+    color: "blue",
   },
 ];
 
 const navigation = [
-  { name: "Dashboard", icon: "⌂" },
-  { name: "Memories", icon: "▤" },
-  { name: "People", icon: "♧" },
-  { name: "Places", icon: "⌖" },
+  { id: "timeline", label: "The Timeline", icon: "⌛" },
+  { id: "pensieve", label: "The Pensieve", icon: "✧" },
+  { id: "favorites", label: "Memory Seals", icon: "✦" },
 ];
 
-function App() {
-  const [memories, setMemories] = useState(initialMemories);
-  const [activePage, setActivePage] = useState("Dashboard");
-  const [search, setSearch] = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [selectedMemory, setSelectedMemory] = useState(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    date: "",
-    person: "",
-    place: "",
-    emotion: "",
-  });
+const emptyForm = {
+  title: "",
+  content: "",
+  date: new Date().toISOString().slice(0, 10),
+  people: "",
+  place: "",
+  tags: "",
+};
 
-  const filteredMemories = memories.filter((memory) => {
-    const searchableText = [
-      memory.title,
-      memory.description,
-      memory.people.join(" "),
-      memory.place,
-      memory.emotion,
-    ]
-      .join(" ")
-      .toLowerCase();
+function readMemories() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : starterMemories;
+  } catch {
+    return starterMemories;
+  }
+}
 
-    return searchableText.includes(search.toLowerCase());
-  });
+function formatDate(dateString) {
+  if (!dateString) return "";
 
-  const updateForm = (field, value) => {
-    setForm((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
-  };
-const deleteMemory = () => {
-  if (!selectedMemory) return;
+  return new Date(`${dateString}T12:00:00`).toLocaleDateString(
+    "en-US",
+    {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }
+  );
+}
 
-  setMemories((previous) =>
-    previous.filter((memory) => memory.id !== selectedMemory.id)
+function getRelativeDate(dateString) {
+  const today = new Date();
+  const date = new Date(`${dateString}T12:00:00`);
+
+  const difference = Math.floor(
+    (new Date(today.getFullYear(), today.getMonth(), today.getDate()) -
+      new Date(date.getFullYear(), date.getMonth(), date.getDate())) /
+      86400000
   );
 
-  setSelectedMemory(null);
-  setShowDeleteConfirm(false);
-};
-  const createMemory = (event) => {
+  if (difference === 0) return "Today";
+  if (difference === 1) return "Yesterday";
+
+  return formatDate(dateString);
+}
+
+function App() {
+  const [memories, setMemories] = useState(readMemories);
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem(THEME_KEY) || "cream";
+  });
+
+  const [activePage, setActivePage] = useState("timeline");
+  const [search, setSearch] = useState("");
+  const [selectedMemory, setSelectedMemory] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [toast, setToast] = useState("");
+  useEffect(() => {
+  if (!toast) return;
+
+  const timeout = setTimeout(() => {
+    setToast("");
+  }, 3000);
+
+  return () => clearTimeout(timeout);
+}, [toast]);
+
+  const isMidnight = theme === "midnight";
+
+  const themeClasses = isMidnight
+    ? "bg-[#171725] text-[#f4efff]"
+    : "bg-[#f8f4ec] text-[#39332e]";
+
+  const cardClasses = isMidnight
+    ? "bg-[#222234] border-[#39364f]"
+    : "bg-[#fffdf8] border-[#e9e0d3]";
+
+  const mutedText = isMidnight
+    ? "text-[#aaa5c2]"
+    : "text-[#93877b]";
+
+  const accentText = "text-[#8c78bd]";
+
+  const saveMemories = (nextMemories) => {
+    setMemories(nextMemories);
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextMemories));
+    } catch {
+      setToast("Unable to save memories in this browser.");
+    }
+  };
+
+  const changeTheme = () => {
+    const nextTheme = isMidnight ? "cream" : "midnight";
+
+    setTheme(nextTheme);
+
+    try {
+      localStorage.setItem(THEME_KEY, nextTheme);
+    } catch {
+      // Theme still changes for the current session.
+    }
+  };
+
+  const filteredMemories = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return [...memories]
+      .filter((memory) => {
+        if (activePage === "favorites" && !memory.favorite) {
+          return false;
+        }
+
+        if (!query) return true;
+
+        const searchableText = [
+          memory.title,
+          memory.content,
+          memory.place,
+          ...(memory.people || []),
+          ...(memory.tags || []),
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return searchableText.includes(query);
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [memories, search, activePage]);
+
+  const favoriteCount = memories.filter(
+    (memory) => memory.favorite
+  ).length;
+
+  const currentPage = navigation.find(
+    (item) => item.id === activePage
+  );
+
+  const handleCreateMemory = (event) => {
     event.preventDefault();
 
+    if (!form.title.trim() || !form.content.trim()) {
+      setToast("Give your memory a title and a story.");
+      return;
+    }
+
     const newMemory = {
-      id: Date.now(),
-      title: form.title,
-      description: form.description,
-      date: form.date || "Date not specified",
-      people: form.person
+      id: crypto.randomUUID
+        ? crypto.randomUUID()
+        : String(Date.now()),
+      title: form.title.trim(),
+      content: form.content.trim(),
+      date: form.date,
+      people: form.people
         .split(",")
         .map((person) => person.trim())
         .filter(Boolean),
-      place: form.place || "Place not specified",
-      emotion: form.emotion || "Not specified",
-      color: "from-violet-500/20 to-indigo-500/10",
+      place: form.place.trim(),
+      tags: form.tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+      favorite: false,
+      color: ["lavender", "cream", "blue"][
+        Math.floor(Math.random() * 3)
+      ],
     };
 
-    setMemories((previous) => [newMemory, ...previous]);
+    saveMemories([newMemory, ...memories]);
+
     setForm({
-      title: "",
-      description: "",
-      date: "",
-      person: "",
-      place: "",
-      emotion: "",
+      ...emptyForm,
+      date: new Date().toISOString().slice(0, 10),
     });
 
     setShowForm(false);
-    setActivePage("Memories");
+    setToast("Your memory has been preserved ✨");
   };
 
-  const pageTitle =
-    activePage === "Dashboard"
-      ? "Your memories, connected."
-      : activePage === "Memories"
-        ? "Your memory archive."
-        : activePage === "People"
-          ? "The people in your story."
-          : "Places that stay with you.";
+  const toggleFavorite = (memoryId) => {
+    const updated = memories.map((memory) =>
+      memory.id === memoryId
+        ? { ...memory, favorite: !memory.favorite }
+        : memory
+    );
+
+    saveMemories(updated);
+
+    if (selectedMemory?.id === memoryId) {
+      setSelectedMemory({
+        ...selectedMemory,
+        favorite: !selectedMemory.favorite,
+      });
+    }
+  };
+
+  const deleteMemory = (memoryId) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to let this memory go?"
+    );
+
+    if (!confirmed) return;
+
+    saveMemories(
+      memories.filter((memory) => memory.id !== memoryId)
+    );
+
+    setSelectedMemory(null);
+    setToast("Memory removed from your archive.");
+  };
+
+  const openCreateForm = () => {
+    setForm({
+      ...emptyForm,
+      date: new Date().toISOString().slice(0, 10),
+    });
+
+    setShowForm(true);
+  };
+
+  const closeModals = () => {
+    setShowForm(false);
+    setSelectedMemory(null);
+  };
 
   return (
-    <div className="min-h-screen bg-[#090b14] text-slate-100">
+    <div
+      className={`echoris-app ${
+        isMidnight ? "theme-midnight" : "theme-cream"
+      } min-h-screen transition-colors duration-500 ${themeClasses}`}
+    >
       <div className="flex min-h-screen">
-        {/* Sidebar */}
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0e18] px-5 py-7 md:flex">
-          <div className="mb-12 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 text-xl text-violet-300">
-              ◈
-            </div>
+        {/* SIDEBAR */}
+        <aside
+          className={`enchanted-sidebar hidden w-[250px] shrink-0 flex-col border-r px-6 py-8 lg:flex ${
+            isMidnight
+              ? "border-[#39364f] bg-[#1c1c2c]"
+              : "border-[#e8dfd2] bg-[#f3eee5]"
+          }`}
+        >
+          <div className="mb-12">
+            <div className="flex items-center gap-3">
+              <img
+                src="/echoris_orbs.png"
+                alt="EchoRIS logo"
+                className="h-12 w-12 object-contain"
+              />
 
-            <div>
-              <h1 className="text-lg font-semibold tracking-wide">
-                EchoRIS
-              </h1>
-              <p className="text-xs text-slate-500">
-                Your memory archive
-              </p>
+              <div>
+                <h1 className="font-serif text-2xl tracking-wide">
+                  EchoRIS
+                </h1>
+                <p
+                  className={`text-[10px] uppercase tracking-[0.25em] ${mutedText}`}
+                >
+                  A memory archive
+                </p>
+              </div>
             </div>
           </div>
 
-          <p className="mb-4 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
-            Workspace
+          <p
+            className={`mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] ${mutedText}`}
+          >
+            Your collection
           </p>
 
-          <nav className="space-y-1">
-            {navigation.map((item) => (
-              <button
-                key={item.name}
-                onClick={() => setActivePage(item.name)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                  activePage === item.name
-                    ? "bg-violet-500/10 text-violet-300"
-                    : "text-slate-500 hover:bg-white/[0.03] hover:text-slate-200"
-                }`}
-              >
-                <span className="w-5 text-center text-lg">
-                  {item.icon}
-                </span>
-                {item.name}
-              </button>
-            ))}
+          <nav className="space-y-2">
+            {navigation.map((item) => {
+              const isActive = activePage === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActivePage(item.id)}
+                  className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm transition-all ${
+                    isActive
+                      ? "bg-[#e7def7] font-medium text-[#7761a8]"
+                      : `${mutedText} hover:bg-[#e9e2f0] hover:text-[#7761a8]`
+                  }`}
+                >
+                  <span className="text-lg">{item.icon}</span>
+                  {item.label}
+                </button>
+              );
+            })}
           </nav>
 
-          <div className="mt-auto rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-            <div className="mb-3 text-lg text-violet-300">✧</div>
-            <p className="text-sm font-medium">
-              Every memory matters.
+          <div className="mt-10">
+            <p
+              className={`mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] ${mutedText}`}
+            >
+              Your archive
             </p>
-            <p className="mt-2 text-xs leading-5 text-slate-500">
-              Your moments, your connections, your story.
-            </p>
-          </div>
 
-          <div className="mt-5 flex items-center gap-3 border-t border-white/[0.06] pt-5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-sm">
-              R
-            </div>
-            <div>
-              <p className="text-sm font-medium">Your space</p>
-              <p className="text-xs text-slate-500">
-                Personal archive
+            <div
+              className={`rounded-2xl border p-4 ${cardClasses}`}
+            >
+              <div className="mb-2 flex items-center justify-between">
+                <span className={`text-xs ${mutedText}`}>
+                  Preserved moments
+                </span>
+
+                <span className={accentText}>✧</span>
+              </div>
+
+              <p className="font-serif text-3xl">
+                {memories.length}
+              </p>
+
+              <p className={`mt-1 text-xs ${mutedText}`}>
+                {favoriteCount} sealed memories
               </p>
             </div>
           </div>
-        </aside>
 
-        {/* Main content */}
-        <main className="min-w-0 flex-1 px-5 py-7 sm:px-8 lg:px-12">
-          <header className="mb-12 flex items-center justify-between">
-            <div className="flex items-center gap-3 md:hidden">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
-                ◈
-              </div>
-              <span className="font-semibold">EchoRIS</span>
-            </div>
+          <div className="mt-auto pt-10">
+            <div
+              className={`rounded-2xl border p-4 ${cardClasses}`}
+            >
+              <p className="mb-2 font-serif text-lg">
+                A little magic
+              </p>
 
-            <div className="hidden text-sm text-slate-500 md:block">
-              Your personal space
-              <span className="mx-2 text-slate-700">/</span>
-              <span className="text-slate-300">{activePage}</span>
+              <p className={`text-xs leading-5 ${mutedText}`}>
+                Some moments deserve to live beyond the moment.
+              </p>
+
+              <button
+                onClick={openCreateForm}
+                className="mt-4 w-full rounded-xl bg-[#8c78bd] px-4 py-3 text-sm text-white transition hover:bg-[#7965a9]"
+              >
+                + Preserve a memory
+              </button>
             </div>
 
             <button
-              onClick={() => setShowForm(true)}
-              className="ml-auto rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-400"
+              onClick={changeTheme}
+              className={`mt-5 flex w-full items-center justify-between rounded-xl px-3 py-3 text-sm transition hover:bg-[#e9e2f0] ${
+                isMidnight ? "text-[#c7b9ed]" : "text-[#7761a8]"
+              }`}
             >
-              + New memory
+              <span>
+                {isMidnight ? "☀" : "☾"}{" "}
+                {isMidnight ? "Return to Cream" : "Enter Midnight"}
+              </span>
+
+              <span
+                className={`relative h-6 w-11 rounded-full transition ${
+                  isMidnight ? "bg-[#8c78bd]" : "bg-[#d7cfe5]"
+                }`}
+              >
+                <span
+                  className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${
+                    isMidnight ? "left-6" : "left-1"
+                  }`}
+                />
+              </span>
             </button>
+          </div>
+        </aside>
+
+        {/* MAIN CONTENT */}
+
+        <main className="min-w-0 flex-1 px-5 py-6 sm:px-8 lg:px-12 lg:py-9">
+          {/* TOP BAR */}
+
+          <header className="mb-10 flex items-center justify-between">
+            <div className="flex items-center gap-3 lg:hidden">
+              <img
+                src="/echoris_orbs.png"
+                alt="EchoRIS logo"
+                className="h-8 w-8 object-contain"
+              />
+
+              <span className="font-serif text-xl">EchoRIS</span>
+            </div>
+
+            <div className="hidden lg:block">
+              <p className={`text-xs ${mutedText}`}>
+                Your personal archive
+              </p>
+
+              <p className="mt-1 font-serif text-lg">
+                A place for the things that matter.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={changeTheme}
+                className={`rounded-full border px-4 py-2 text-sm transition ${
+                  isMidnight
+                    ? "border-[#51476d] text-[#d4c8f5]"
+                    : "border-[#ded3c4] text-[#7761a8]"
+                }`}
+              >
+                {isMidnight ? "☀ Cream" : "☾ Midnight"}
+              </button>
+
+              <button
+                onClick={openCreateForm}
+                className="rounded-full bg-[#8c78bd] px-5 py-2.5 text-sm text-white shadow-sm transition hover:bg-[#7965a9]"
+              >
+                + New memory
+              </button>
+            </div>
           </header>
 
-          {/* Welcome section */}
-          <section className="mb-10">
-            <p className="mb-3 text-xs font-medium uppercase tracking-[0.22em] text-violet-300/80">
-              Your personal archive
+          {/* EDITORIAL INTRO */}
+
+              <section className="cream-hero mb-10">            <p
+              className={`mb-3 text-xs uppercase tracking-[0.25em] ${accentText}`}
+            >
+              {activePage === "favorites"
+                ? "The memories you treasure"
+                : activePage === "pensieve"
+                ? "A moment from your past"
+                : "Your story, beautifully kept"}
             </p>
 
-            <h2 className="max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
-              {pageTitle}
+            <h2 className="max-w-3xl font-serif text-4xl leading-tight sm:text-5xl lg:text-6xl">
+              {activePage === "favorites"
+                ? "The memories you hold close."
+                : activePage === "pensieve"
+                ? "Step back into a moment."
+                : "Your life, in little fragments."}
             </h2>
 
-            <p className="mt-4 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
-              The moments that shaped you, the people who were
-              there, and the feelings that stayed.
+            <p
+              className={`mt-4 max-w-xl text-sm leading-7 ${mutedText}`}
+            >
+              Every little moment has a place here. The ordinary,
+              the extraordinary, and everything in between.
             </p>
           </section>
 
-          {/* Stats */}
-          <section className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-3">
-            <div className="rounded-2xl border border-white/[0.06] bg-[#10121e] p-5">
-              <p className="text-xs text-slate-500">
-                Memories collected
+          {/* STATS */}
+
+          <section className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div
+              className={`rounded-2xl border p-5 ${cardClasses}`}
+            >
+              <p className={`text-xs ${mutedText}`}>
+                Memories preserved
               </p>
-              <p className="mt-3 text-3xl font-semibold">
+
+              <p className="mt-2 font-serif text-3xl">
                 {memories.length}
               </p>
-              <p className="mt-2 text-xs text-slate-600">
-                Moments worth keeping
+
+              <p className={`mt-1 text-xs ${mutedText}`}>
+                Little pieces of your story
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#10121e] p-5">
-              <p className="text-xs text-slate-500">
-                People remembered
+            <div
+              className={`rounded-2xl border p-5 ${cardClasses}`}
+            >
+              <p className={`text-xs ${mutedText}`}>
+                Memory seals
               </p>
-              <p className="mt-3 text-3xl font-semibold">
-                {
-                  new Set(
-                    memories.flatMap((memory) => memory.people)
-                  ).size
-                }
+
+              <p className="mt-2 font-serif text-3xl">
+                {favoriteCount}
               </p>
-              <p className="mt-2 text-xs text-slate-600">
-                Part of your story
+
+              <p className={`mt-1 text-xs ${mutedText}`}>
+                Moments held especially close
               </p>
             </div>
 
-            <div className="col-span-2 rounded-2xl border border-white/[0.06] bg-[#10121e] p-5 lg:col-span-1">
-              <p className="text-xs text-slate-500">
+            <div
+              className={`rounded-2xl border p-5 ${cardClasses}`}
+            >
+              <p className={`text-xs ${mutedText}`}>
                 Your archive
               </p>
-              <p className="mt-3 text-3xl font-semibold">
-                Private
+
+              <p className="mt-2 font-serif text-3xl">
+                {new Set(memories.map((memory) => memory.date.slice(0, 4))).size}
               </p>
-              <p className="mt-2 text-xs text-slate-600">
-                Your memories belong to you
+
+              <p className={`mt-1 text-xs ${mutedText}`}>
+                Years of memories
               </p>
             </div>
           </section>
 
-          {/* Memory section */}
+          {/* SEARCH + TIMELINE */}
+
           <section>
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
-                <h3 className="text-lg font-medium">
-                  {activePage === "Dashboard"
-                    ? "Recently remembered"
-                    : activePage}
+                <h3 className="font-serif text-2xl">
+                  {currentPage?.label || "The Timeline"}
                 </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Explore the moments you've collected
+
+                <p className={`mt-1 text-xs ${mutedText}`}>
+                  A collection of moments, arranged in time.
                 </p>
               </div>
 
-              <div className="relative w-full sm:max-w-xs">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                  ⌕
-                </span>
+              <div
+                className={`flex items-center gap-3 rounded-xl border px-4 py-3 sm:w-72 ${cardClasses}`}
+              >
+                <span className={accentText}>⌕</span>
 
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search memories..."
-                  className="w-full rounded-xl border border-white/[0.07] bg-[#10121e] py-2.5 pl-9 pr-4 text-sm text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-violet-500/50"
+                  placeholder="Search your memories..."
+                  className={`w-full bg-transparent text-sm outline-none ${
+                    isMidnight
+                      ? "placeholder:text-[#77738e]"
+                      : "placeholder:text-[#b0a59a]"
+                  }`}
                 />
               </div>
             </div>
 
+            {/* TIMELINE */}
+
             {filteredMemories.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center">
-                <p className="text-sm text-slate-400">
-                  No memories found.
+              <div
+                className={`rounded-2xl border p-10 text-center ${cardClasses}`}
+              >
+                <div className="mb-4 text-4xl text-[#8c78bd]">
+                  ✧
+                </div>
+
+                <h4 className="font-serif text-2xl">
+                  No memories found
+                </h4>
+
+                <p className={`mt-2 text-sm ${mutedText}`}>
+                  Your archive is waiting for its next little
+                  moment.
                 </p>
-                <p className="mt-2 text-xs text-slate-600">
-                  Try another search or create a new memory.
-                </p>
+
+                <button
+                  onClick={openCreateForm}
+                  className="mt-5 rounded-full bg-[#8c78bd] px-5 py-2.5 text-sm text-white"
+                >
+                  Preserve a memory
+                </button>
               </div>
             ) : (
-              <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-                {filteredMemories.map((memory) => (
-                  <button
-                    key={memory.id}
-                    onClick={() => setSelectedMemory(memory)}
-                    className="group text-left"
-                  >
+              <div className="relative">
+                {/* TIMELINE LINE */}
+
+                <div
+                  className={`absolute bottom-0 left-[11px] top-2 w-px ${
+                    isMidnight
+                      ? "bg-[#5d507f]"
+                      : "bg-[#d9cde9]"
+                  }`}
+                />
+
+                <div className="space-y-8">
+                  {filteredMemories.map((memory, index) => (
                     <article
-                      className={`h-full rounded-2xl border border-white/[0.06] bg-gradient-to-br ${memory.color} p-5 transition duration-300 hover:-translate-y-1 hover:border-violet-400/20`}
+                      key={memory.id}
+                      className="relative pl-10"
                     >
-                      <div className="mb-5 flex items-center justify-between">
-                        <span className="text-xs text-slate-500">
-                          {memory.date}
-                        </span>
-                        <span className="text-slate-600 transition group-hover:text-violet-300">
-                          ↗
-                        </span>
+                      {/* MEMORY MARK */}
+
+                      <div className="absolute left-0 top-2 flex h-6 w-6 items-center justify-center rounded-full border-4 border-[#8c78bd] bg-[#f8f4ec] text-[8px] text-[#8c78bd]">
+                        ✦
                       </div>
 
-                      <h4 className="text-lg font-medium text-slate-100">
-                        {memory.title}
-                      </h4>
+                      {/* DATE */}
 
-                      <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-400">
-                        {memory.description}
-                      </p>
+                      <div className="mb-3 flex flex-wrap items-center gap-3">
+                        <p
+                          className={`text-xs font-medium uppercase tracking-[0.12em] ${accentText}`}
+                        >
+                          {formatDate(memory.date)}
+                        </p>
 
-                      <div className="mt-6 space-y-3 border-t border-white/[0.06] pt-4">
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <span className="text-violet-300">♧</span>
-                          <span>
-                            {memory.people.length
-                              ? memory.people.join(", ")
-                              : "No people linked"}
+                        {index === 0 && (
+                          <span className="rounded-full bg-[#e7def7] px-2.5 py-1 text-[10px] text-[#7761a8]">
+                            Latest memory
                           </span>
-                        </div>
+                        )}
+                      </div>
 
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <span className="text-violet-300">⌖</span>
-                          <span>{memory.place}</span>
-                        </div>
+                      {/* MEMORY CARD */}
 
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <span className="text-violet-300">✧</span>
-                          <span>{memory.emotion}</span>
+                      <div
+                        className={`scrapbook-card group relative overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-1 hover:shadow-lg ${cardClasses}`}
+                      >
+                        <div className="flex">
+                          <div
+                            className={`w-2 shrink-0 ${
+                              memory.color === "lavender"
+                                ? "bg-[#c9b8e8]"
+                                : memory.color === "blue"
+                                ? "bg-[#aab9d8]"
+                                : "bg-[#e7d8bc]"
+                            }`}
+                          />
+
+                          <div className="min-w-0 flex-1 p-5 sm:p-7">
+                            <div className="mb-4 flex items-start justify-between gap-4">
+                              <div>
+                                <p
+                                  className={`mb-2 text-[10px] uppercase tracking-[0.2em] ${mutedText}`}
+                                >
+                                  A fragment of your story
+                                </p>
+
+                                <h4 className="font-serif text-2xl leading-snug sm:text-3xl">
+                                  {memory.title}
+                                </h4>
+                              </div>
+
+                              <button
+                                onClick={() =>
+                                  toggleFavorite(memory.id)
+                                }
+                                aria-label="Toggle favorite"
+                                className={`shrink-0 rounded-full p-2 text-xl transition ${
+                                  memory.favorite
+                                    ? "text-[#8c78bd]"
+                                    : mutedText
+                                }`}
+                              >
+                                {memory.favorite ? "✦" : "✧"}
+                              </button>
+                            </div>
+
+                            <p
+                              className={`max-w-3xl text-sm leading-7 ${mutedText}`}
+                            >
+                              {memory.content}
+                            </p>
+
+                            {(memory.place ||
+                              memory.people?.length > 0) && (
+                              <div
+                                className={`mt-5 flex flex-wrap gap-4 text-xs ${mutedText}`}
+                              >
+                                {memory.place && (
+                                  <span>
+                                    ♧ {memory.place}
+                                  </span>
+                                )}
+
+                                {memory.people?.length > 0 && (
+                                  <span>
+                                    ♡ {memory.people.join(", ")}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {memory.tags?.length > 0 && (
+                              <div className="mt-5 flex flex-wrap gap-2">
+                                {memory.tags.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className={`rounded-full px-3 py-1 text-[10px] ${
+                                      isMidnight
+                                        ? "bg-[#38334d] text-[#c7b9ed]"
+                                        : "bg-[#eee7f7] text-[#806da9]"
+                                    }`}
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="mt-6 flex items-center justify-between border-t border-dashed border-[#d9cde9] pt-4">
+                              <span
+                                className={`text-xs ${mutedText}`}
+                              >
+                                {getRelativeDate(memory.date)}
+                              </span>
+
+                              <button
+                                onClick={() =>
+                                  setSelectedMemory(memory)
+                                }
+                                className={`text-xs font-medium transition hover:underline ${accentText}`}
+                              >
+                                Open memory ↗
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </article>
-                  </button>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </section>
 
-          <footer className="mt-16 border-t border-white/[0.05] py-6 text-center text-xs text-slate-700">
-            EchoRIS · Where memories find their connections.
+          {/* FOOTER */}
+
+          <footer
+            className={`mt-16 border-t pt-6 text-center text-xs ${mutedText} ${
+              isMidnight
+                ? "border-[#39364f]"
+                : "border-[#e8dfd2]"
+            }`}
+          >
+            <p className="font-serif text-base">
+              “Some things are worth remembering.”
+            </p>
+
+            <p className="mt-2">
+              EchoRIS · Your personal memory archive
+            </p>
           </footer>
         </main>
       </div>
 
-      {/* Create memory modal */}
+      {/* MOBILE NAVIGATION */}
+
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t px-2 py-3 lg:hidden ${
+          isMidnight
+            ? "border-[#39364f] bg-[#1c1c2c]"
+            : "border-[#e8dfd2] bg-[#fffdf8]"
+        }`}
+      >
+        {navigation.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActivePage(item.id)}
+            className={`flex flex-col items-center gap-1 text-[10px] ${
+              activePage === item.id
+                ? "text-[#8c78bd]"
+                : mutedText
+            }`}
+          >
+            <span className="text-lg">{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+
+        <button
+          onClick={openCreateForm}
+          className="flex flex-col items-center gap-1 text-[10px] text-[#8c78bd]"
+        >
+          <span className="text-lg">＋</span>
+          New memory
+        </button>
+      </div>
+
+      {/* CREATE MEMORY MODAL */}
+
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
-          <div className="my-auto w-full max-w-lg rounded-2xl border border-white/10 bg-[#11131f] p-6 shadow-2xl sm:p-8">
-            <div className="mb-6 flex items-start justify-between">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeModals();
+            }
+          }}
+        >
+          <div
+            className={`max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border p-6 shadow-2xl sm:p-9 ${
+              cardClasses
+            }`}
+          >
+            <div className="mb-7 flex items-start justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-violet-300">
-                  Preserve a moment
+                <p
+                  className={`mb-2 text-xs uppercase tracking-[0.2em] ${accentText}`}
+                >
+                  The Enchanted Quill
                 </p>
-                <h3 className="mt-2 text-2xl font-semibold">
-                  New memory
+
+                <h3 className="font-serif text-3xl sm:text-4xl">
+                  Preserve a little moment.
                 </h3>
+
+                <p className={`mt-2 text-sm ${mutedText}`}>
+                  Write it down before the feeling fades.
+                </p>
               </div>
 
               <button
-                onClick={() => setShowForm(false)}
-                className="text-xl text-slate-500 hover:text-white"
+                onClick={closeModals}
+                className={`rounded-full px-3 py-2 ${mutedText}`}
               >
-                ×
+                ✕
               </button>
             </div>
 
-            <form onSubmit={createMemory} className="space-y-4">
+            <form
+              onSubmit={handleCreateMemory}
+              className="space-y-5"
+            >
               <div>
-                <label className="mb-2 block text-xs text-slate-400">
-                  Memory title *
+                <label
+                  className={`mb-2 block text-xs ${mutedText}`}
+                >
+                  Give this memory a title
                 </label>
+
                 <input
-                  required
                   value={form.title}
                   onChange={(event) =>
-                    updateForm("title", event.target.value)
+                    setForm({
+                      ...form,
+                      title: event.target.value,
+                    })
                   }
-                  placeholder="Give this memory a name"
-                  className="w-full rounded-xl border border-white/[0.08] bg-[#090b14] px-4 py-3 text-sm outline-none focus:border-violet-500/50"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs text-slate-400">
-                  What happened? *
-                </label>
-                <textarea
+                  placeholder="A day I'll always remember..."
+                  className={`w-full rounded-xl border px-4 py-3 font-serif text-xl outline-none focus:border-[#8c78bd] ${
+                    isMidnight
+                      ? "border-[#39364f] bg-[#1c1c2c]"
+                      : "border-[#e8dfd2] bg-[#faf7f0]"
+                  }`}
                   required
-                  rows={3}
-                  value={form.description}
-                  onChange={(event) =>
-                    updateForm("description", event.target.value)
-                  }
-                  placeholder="Write down what you remember..."
-                  className="w-full resize-none rounded-xl border border-white/[0.08] bg-[#090b14] px-4 py-3 text-sm outline-none focus:border-violet-500/50"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-xs text-slate-400">
-                  Date
+                <label
+                  className={`mb-2 block text-xs ${mutedText}`}
+                >
+                  When did it happen?
                 </label>
+
                 <input
                   type="date"
                   value={form.date}
                   onChange={(event) =>
-                    updateForm("date", event.target.value)
+                    setForm({
+                      ...form,
+                      date: event.target.value,
+                    })
                   }
-                  className="w-full rounded-xl border border-white/[0.08] bg-[#090b14] px-4 py-3 text-sm outline-none focus:border-violet-500/50"
+                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[#8c78bd] ${
+                    isMidnight
+                      ? "border-[#39364f] bg-[#1c1c2c]"
+                      : "border-[#e8dfd2] bg-[#faf7f0]"
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label
+                  className={`mb-2 block text-xs ${mutedText}`}
+                >
+                  Tell your story
+                </label>
+
+                <textarea
+                  value={form.content}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      content: event.target.value,
+                    })
+                  }
+                  placeholder="The little details, the feeling, the things you never want to forget..."
+                  rows={6}
+                  required
+                  className={`w-full resize-y rounded-xl border px-4 py-4 text-sm leading-7 outline-none focus:border-[#8c78bd] ${
+                    isMidnight
+                      ? "border-[#39364f] bg-[#1c1c2c]"
+                      : "border-[#e8dfd2] bg-[#faf7f0]"
+                  }`}
                 />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-xs text-slate-400">
+                  <label
+                    className={`mb-2 block text-xs ${mutedText}`}
+                  >
                     People
                   </label>
+
                   <input
-                    value={form.person}
+                    value={form.people}
                     onChange={(event) =>
-                      updateForm("person", event.target.value)
+                      setForm({
+                        ...form,
+                        people: event.target.value,
+                      })
                     }
-                    placeholder="Names, comma separated"
-                    className="w-full rounded-xl border border-white/[0.08] bg-[#090b14] px-4 py-3 text-sm outline-none focus:border-violet-500/50"
+                    placeholder="Separate names with commas"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[#8c78bd] ${
+                      isMidnight
+                        ? "border-[#39364f] bg-[#1c1c2c]"
+                        : "border-[#e8dfd2] bg-[#faf7f0]"
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs text-slate-400">
+                  <label
+                    className={`mb-2 block text-xs ${mutedText}`}
+                  >
                     Place
                   </label>
+
                   <input
                     value={form.place}
                     onChange={(event) =>
-                      updateForm("place", event.target.value)
+                      setForm({
+                        ...form,
+                        place: event.target.value,
+                      })
                     }
                     placeholder="Where did it happen?"
-                    className="w-full rounded-xl border border-white/[0.08] bg-[#090b14] px-4 py-3 text-sm outline-none focus:border-violet-500/50"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[#8c78bd] ${
+                      isMidnight
+                        ? "border-[#39364f] bg-[#1c1c2c]"
+                        : "border-[#e8dfd2] bg-[#faf7f0]"
+                    }`}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-2 block text-xs text-slate-400">
-                  Emotion
+                <label
+                  className={`mb-2 block text-xs ${mutedText}`}
+                >
+                  Tags
                 </label>
+
                 <input
-                  value={form.emotion}
+                  value={form.tags}
                   onChange={(event) =>
-                    updateForm("emotion", event.target.value)
+                    setForm({
+                      ...form,
+                      tags: event.target.value,
+                    })
                   }
-                  placeholder="What feeling stayed with you?"
-                  className="w-full rounded-xl border border-white/[0.08] bg-[#090b14] px-4 py-3 text-sm outline-none focus:border-violet-500/50"
+                  placeholder="Friendship, travel, little moments..."
+                  className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[#8c78bd] ${
+                    isMidnight
+                      ? "border-[#39364f] bg-[#1c1c2c]"
+                      : "border-[#e8dfd2] bg-[#faf7f0]"
+                  }`}
                 />
               </div>
 
-              <div className="flex gap-3 pt-3">
+              <div className="flex flex-col-reverse gap-3 pt-3 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
-                  className="flex-1 rounded-xl border border-white/10 py-3 text-sm text-slate-400 transition hover:bg-white/[0.03]"
+                  onClick={closeModals}
+                  className={`rounded-xl border px-5 py-3 text-sm ${
+                    isMidnight
+                      ? "border-[#39364f]"
+                      : "border-[#e8dfd2]"
+                  }`}
                 >
-                  Cancel
+                  Maybe later
                 </button>
 
                 <button
                   type="submit"
-                  className="flex-1 rounded-xl bg-violet-500 py-3 text-sm font-medium text-white transition hover:bg-violet-400"
+                  className="rounded-xl bg-[#8c78bd] px-6 py-3 text-sm text-white transition hover:bg-[#7965a9]"
                 >
-                  Save memory
+                  ✧ Preserve this memory
                 </button>
               </div>
             </form>
@@ -510,98 +1023,110 @@ const deleteMemory = () => {
         </div>
       )}
 
-      {/* Memory details modal */}
+      {/* MEMORY DETAILS MODAL */}
+
       {selectedMemory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
-          <div className="my-auto w-full max-w-lg rounded-2xl border border-white/10 bg-[#11131f] p-6 sm:p-8">
-            <div className="mb-6 flex items-center justify-between">
-              <span className="text-xs uppercase tracking-[0.2em] text-violet-300">
-                Memory details
-              </span>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelectedMemory(null);
+            }
+          }}
+        >
+          <div
+            className={`max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border p-6 shadow-2xl sm:p-9 ${
+              cardClasses
+            }`}
+          >
+            <div className="mb-6 flex items-start justify-between">
+              <p
+                className={`text-xs uppercase tracking-[0.2em] ${accentText}`}
+              >
+                A preserved fragment
+              </p>
 
               <button
-                onClick={() => {
-                  setSelectedMemory(null);
-                   setShowDeleteConfirm(false);
-}}
-                className="text-xl text-slate-500 hover:text-white"
+                onClick={() => setSelectedMemory(null)}
+                className={`rounded-full px-3 py-2 ${mutedText}`}
               >
-                ×
+                ✕
               </button>
             </div>
 
-            <h3 className="text-2xl font-semibold">
+            <p className={`mb-3 text-xs ${mutedText}`}>
+              {formatDate(selectedMemory.date)}
+            </p>
+
+            <h3 className="font-serif text-3xl leading-tight sm:text-4xl">
               {selectedMemory.title}
             </h3>
 
-            <p className="mt-2 text-xs text-slate-500">
-              {selectedMemory.date}
+            <p
+              className={`mt-6 whitespace-pre-wrap text-sm leading-8 ${mutedText}`}
+            >
+              {selectedMemory.content}
             </p>
 
-            <p className="mt-6 whitespace-pre-wrap text-sm leading-7 text-slate-300">
-              {selectedMemory.description}
-            </p>
+            {selectedMemory.place && (
+              <p className={`mt-5 text-sm ${mutedText}`}>
+                ♧ {selectedMemory.place}
+              </p>
+            )}
 
-            <div className="mt-8 space-y-4 border-t border-white/[0.06] pt-5">
-              <div>
-                <p className="text-xs text-slate-500">People</p>
-                <p className="mt-1 text-sm text-slate-200">
-                  {selectedMemory.people.join(", ") || "None linked"}
-                </p>
+            {selectedMemory.people?.length > 0 && (
+              <p className={`mt-3 text-sm ${mutedText}`}>
+                ♡ {selectedMemory.people.join(", ")}
+              </p>
+            )}
+
+            {selectedMemory.tags?.length > 0 && (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {selectedMemory.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full bg-[#e7def7] px-3 py-1 text-xs text-[#7761a8]"
+                  >
+                    {tag}
+                  </span>
+                ))}
               </div>
+            )}
 
-              <div>
-                <p className="text-xs text-slate-500">Place</p>
-                <p className="mt-1 text-sm text-slate-200">
-                  {selectedMemory.place}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Emotion</p>
-                <p className="mt-1 text-sm text-slate-200">
-                  {selectedMemory.emotion}
-                </p>
-              </div>
-            </div>
+            <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-dashed border-[#d9cde9] pt-5">
+              <button
+                onClick={() =>
+                  toggleFavorite(selectedMemory.id)
+                }
+                className={`rounded-xl border px-4 py-3 text-sm ${
+                  isMidnight
+                    ? "border-[#39364f]"
+                    : "border-[#e8dfd2]"
+                }`}
+              >
+                {selectedMemory.favorite
+                  ? "✦ Remove memory seal"
+                  : "✧ Add memory seal"}
+              </button>
 
-            {/* Two-step delete verification */}
-            <div className="mt-8 border-t border-white/[0.06] pt-5">
-              {!showDeleteConfirm ? (
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="w-full rounded-xl border border-red-500/20 py-3 text-sm text-red-400 transition hover:bg-red-500/10"
-                >
-                  Delete memory
-                </button>
-              ) : (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4">
-                  <p className="text-sm font-medium text-slate-200">
-                    Are you sure you want to delete this memory?
-                  </p>
-
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    This action cannot be undone.
-                  </p>
-
-                  <div className="mt-4 flex gap-3">
-                    <button
-                      onClick={() => setShowDeleteConfirm(false)}
-                      className="flex-1 rounded-xl border border-white/10 py-3 text-sm text-slate-400 transition hover:bg-white/[0.03]"
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      onClick={deleteMemory}
-                      className="flex-1 rounded-xl bg-red-500 py-3 text-sm font-medium text-white transition hover:bg-red-400"
-                    >
-                      Yes, delete permanently
-                    </button>
-                  </div>
-                </div>
-              )}
+              <button
+                onClick={() =>
+                  deleteMemory(selectedMemory.id)
+                }
+                className="rounded-xl px-4 py-3 text-sm text-red-400 transition hover:bg-red-50 hover:text-red-600"
+              >
+                Delete memory
+              </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TOAST MESSAGE */}
+
+      {toast && (
+        <div className="fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-[#8c78bd] px-5 py-3 text-sm text-white shadow-lg lg:bottom-8">
+          {toast}
         </div>
       )}
     </div>
